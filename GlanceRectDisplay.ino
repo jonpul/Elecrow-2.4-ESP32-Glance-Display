@@ -1,7 +1,3 @@
-
-// days between dates https://stackoverflow.com/questions/73844879/calculate-the-number-of-days-between-two-dates-in-c-convert-date-to-days
-
-
 #include <TFT_eSPI.h>     // display 
 #include <WiFi.h>         
 #include <HTTPClient.h>
@@ -118,11 +114,6 @@ void setup() {
   {
     tft.fillScreen(TFT_BLACK);
     tft.drawString("Ready...", 10,10,4);
-  
-    //  drawArrayJpeg(tinyxmastree, sizeof(tinyxmastree), 10, 20); // Draw a jpeg image stored in memory
-    //  drawArrayJpeg(tinyhalloween, sizeof(tinyhalloween), 10, 70); // Draw a jpeg image stored in memory
-    //  drawArrayJpeg(tinyhearts, sizeof(tinyhearts), 70, 20); // Draw a jpeg image stored in memory
-    //  drawArrayJpeg(tinydadjoke, sizeof(tinydadjoke), 70, 70); // Draw a jpeg image stored in memory
 
     getThought(true);
     while(thought.length()<1 || thought.length()>100)
@@ -449,16 +440,12 @@ void displayThought()
 
   // center thought lines vertically on the screen
   int thoughtStartY = (tft.height()/2)-((tft.fontHeight(GFXFF)*thoughtLines)/2);  
-  //tft.setCursor(10, thoughtStartY);
-  //tft.printf(thought.c_str());
   int authorY = thoughtStartY+(tft.fontHeight(GFXFF)*thoughtLines);
 
   tft.setViewport(5, thoughtStartY-17,314, (authorY-thoughtStartY)+20);
   tft.setCursor(0,20);
   tft.print(thought.c_str());
-  //tft.setCursor(tft.width()/2, authorY);  // need to set this position before changing smaller font
   tft.setFreeFont(ROBOTO12);
-  //tft.setCursor(305-tft.textWidth(author.c_str()), authorY);  // need to set this position before changing smaller font
   String paddedAuthor = author+"   ";
   tft.setCursor(tft.width()-tft.textWidth(paddedAuthor.c_str()), (authorY-thoughtStartY)+9);  // need to set this position before changing smaller font
   tft.setTextDatum(MR_DATUM);
@@ -469,23 +456,15 @@ void displayThought()
   // draw filigree
   // top
   tft.drawFastHLine(40, thoughtStartY-30, tft.width()-80, TFT_DARKGREY);
-  //tft.drawFastHLine(40, thoughtStartY-31, tft.width()-80, TFT_DARKGREY);
   tft.drawCircle(40, thoughtStartY-35, 3, TFT_DARKGREY);
-  //tft.drawCircle(40, thoughtStartY-36, 4, TFT_DARKGREY);
   tft.drawCircle(tft.width()-40, thoughtStartY-35, 3, TFT_DARKGREY);
-  //tft.drawCircle(tft.width()-40, thoughtStartY-36, 4, TFT_DARKGREY);
   tft.drawCircle(tft.width()/2, thoughtStartY-35, 3, TFT_DARKGREY);
-  //tft.drawCircle(tft.width()/2, thoughtStartY-36, 4, TFT_DARKGREY);
   //bottom
   tft.drawFastHLine(40, authorY+20, tft.width()-80, TFT_DARKGREY);
-  //tft.drawFastHLine(40, authorY+21, tft.width()-80, TFT_DARKGREY);
   tft.drawCircle(40, authorY+25, 3, TFT_DARKGREY);
-  //tft.drawCircle(40, authorY+26, 4, TFT_DARKGREY);
   tft.drawCircle(tft.width()-40, authorY+25, 3, TFT_DARKGREY);
-  //tft.drawCircle(tft.width()-40, authorY+26, 4, TFT_DARKGREY);
   tft.drawCircle(tft.width()/2, authorY+25, 3, TFT_DARKGREY);
-  //tft.drawCircle(tft.width()/2, authorY+26, 4, TFT_DARKGREY);
-}
+  
 
 String breakStringIntoLines(String item, bool countThoughtLines)
 {
@@ -498,8 +477,6 @@ String breakStringIntoLines(String item, bool countThoughtLines)
   
   if(countThoughtLines)
     thoughtLines = 1;  // used to position the author name in display
-
- //Serial.printf("Input length: %d\n",thought.length());
 
   // handle the easy case - no breaks needed
   if(item.length()<=lineSize)
@@ -547,9 +524,6 @@ String breakStringIntoLines(String item, bool countThoughtLines)
         }
       }
     }
-    //Serial.println(pos);
-    //Serial.println(lineSize);
-    //Serial.println(thought.length());
   }
   return item;
 }
@@ -560,124 +534,6 @@ void selectCannedThought()
   thought = cannedThoughts[randThought];
   author = cannedAuthors[randThought];
 }
-
-String getMonthDay()
-{
-  // return a string in the form "mm/dd" - two digits each month and year
-  return "08/11";
-}
-
-// void getEvent(bool firstRun)
-// {
-//   #ifdef DEBUG
-//     if(firstRun)
-//     {
-//       Serial.println("STARTUP: getting on this day");
-//     }
-//     else
-//     {
-//       Serial.println("NON-STARTUP: getting on this day");
-//     }
-//   #endif
-
-//   String monthDay = getMonthDay();
-
-//   JSONVar jsonObj = null;
-
-//   if(WiFi.isConnected())
-//   {
-//     // Initialize the HTTPClient object
-//     HTTPClient http;
-//     tft.fillCircle(tft.width()-6,tft.height()-6,5,TFT_BLUE); // draw refresh indicator dot
-    
-//     // Construct the URL using token from secrets.h  
-//     //this is weatherapi.com one day forecast request, which also returns location and current conditions
-//     // use zipcode if there is one, otherwise use public IP location 
-//     String url = "https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/selected/"+monthDay;
-    
-//     // Make the HTTP GET request 
-//     http.begin(url);
-//     int httpCode = http.GET();
-
-//     String payload = "";
-//     // Check the return code
-//     if (httpCode == HTTP_CODE_OK) {
-//       // If the server responds with 200, return the payload
-//       payload = http.getString();
-//       #ifdef DEBUG
-//         Serial.println(payload);
-//       #endif
-//     } 
-//     else 
-//     {
-//       // For any other HTTP response code, print it
-//       #ifdef DEBUG
-//         Serial.println(F("Received unexpected HTTP response:"));
-//         Serial.println(httpCode);
-//       #endif
-//       http.end();
-//       // if there was an error just use a placeholder
-//       eventText = "A network connection issue prevented this device from getting a more interesting real event that had happened.";
-//       eventYear = "Now";
-//       return;
-//     }
-//     // End the HTTP connection
-//     http.end();
-
-//     // Parse response
-//     jsonObj = JSON.parse(payload);
-
-//     Serial.println(jsonObj["events"][0]);
-//     Serial.println(jsonObj["events"][0][0]);
-//     Serial.println(jsonObj["events"][0][0][0]);
-
-//     objRec(jsonObj);
-
-    
-//     // TODO figure out how many events came back
-//     // pick one at random
-//     // check if it is too long and if it is, pick another event at random
-
-
-//     // Read values
-//     eventText = (String)jsonObj["result"]["quote"];
-//     int eventYearNbr = (int)jsonObj["result"]["author"];
-//     if (eventYearNbr <0)
-//     {
-//       eventYear = (String)abs(eventYearNbr)+"BC";
-//     }
-//     else 
-//     {
-//       eventYear = (String)eventYearNbr;
-//     }
-
-//     #ifdef DEBUG
-//       Serial.println("On this day refreshed");
-//     #endif
-//   }
-//   else if(!firstRun)
-//   {
-//     connectWifi(true);
-//   }
-//   tft.fillCircle(tft.width()-6,tft.height()-6,5,TFT_BLACK); // erase refresh indicator dot
-// }
-// void objRec(JSONVar jsonObj) {
-//   Serial.println("{");
-//   for (int x = 0; x < jsonObj.keys().length(); x++) {
-//     if ((JSON.typeof(jsonObj[jsonObj.keys()[x]])).equals("object")) {
-//       Serial.print(jsonObj.keys()[x]);
-//       Serial.println(" : ");
-//       objRec(jsonObj[jsonObj.keys()[x]]);
-//     }
-//     else {
-//       Serial.print(jsonObj.keys()[x]);
-//       Serial.print(" : ");
-//       Serial.println(jsonObj[jsonObj.keys()[x]]);
-//     }
-//   }
-//   Serial.println("}");
-// }
-
 
 void getDadJoke(bool firstRun)
 {
@@ -785,8 +641,7 @@ void drawArrayJpeg(const uint8_t arrayname[], uint32_t array_size, int xpos, int
   int y = ypos;
 
   JpegDec.decodeArray(arrayname, array_size);
-  renderJPEG(x, y);
-  
+  renderJPEG(x, y); 
 }
 
 void displayDaysToEvent(int eventType, int numDays, String anniversaryNbr)
@@ -894,13 +749,6 @@ void getTime(bool firstRun)
 
 void parseTime(const char* localTime)
 {
-  // parse the local time we got from the weather request for use by the time page (ignores second)
-  // int tYr = (localTime.substring(0,4)).toInt();
-  // int tMon = (localTime.substring(5,7)).toInt();
-  // int tDay = (localTime.substring(8,10)).toInt();
-  // int tHr = (localTime.substring(11,13)).toInt();
-  // int tMin = (localTime.substring(14)).toInt();
-
   // time string looks like "2024-07-07T09:40:04.944551-05:00",
   // consts to avoid magic numbers
   const int startYr = 0;
@@ -981,7 +829,6 @@ void parseTime(const char* localTime)
 
 String setYearOrdinal(int nbrYears)
 {
-
   // Use this approach to add the st, nd, rd, th
     if ((nbrYears % 10 == 1) && (nbrYears % 100 != 11))
         return (String)nbrYears+"st";
