@@ -1,4 +1,4 @@
-#ESP32 Rectangular Glance Display
+# ESP32 Rectangular Glance Display
 This is the companion project to https://github.com/jonpul/ESP32-Glance-Display and runs (as is) on the Elecrow 2.4" ESP32 WROOM device (https://www.amazon.com/dp/B0C8T6K21H). 
 Select ESP32-WROOM-DA as the target ESP32 board in the Arduino IDE. 
 
