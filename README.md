@@ -7,7 +7,7 @@ I removed the front acrylic piece and substituted a blank piece of black acrylic
 This project rotates through screens showing:
 * Inspirational quotes from https://www.stands4.com/services/v2/quotes.php (requires sign up and a free API key)
 * Dad jokes from https://icanhazdadjoke.com/
-* Countdown to my anniversary, halloween and christmas.
+* Countdown to my anniversary (see yearMarried to set marriage year), halloween and christmas.
 
 Tap and hold to refresh the thought or joke page with a new one. 
 Tap to manually advance to the next page. 
