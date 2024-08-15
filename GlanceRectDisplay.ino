@@ -432,6 +432,15 @@ void getThought(bool firstRun)
 
 void displayThought()
 {
+  // final length check 
+  while(thought.length()<1 || thought.length()>100)
+  {
+    #ifdef DEBUG
+      Serial.println("Thought too long, getting another");
+    #endif
+    getThought(false);
+  }
+  
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   tft.setTextSize(1); 
@@ -464,7 +473,7 @@ void displayThought()
   tft.drawCircle(40, authorY+25, 3, TFT_DARKGREY);
   tft.drawCircle(tft.width()-40, authorY+25, 3, TFT_DARKGREY);
   tft.drawCircle(tft.width()/2, authorY+25, 3, TFT_DARKGREY);
-  
+}
 
 String breakStringIntoLines(String item, bool countThoughtLines)
 {
