@@ -95,7 +95,6 @@ void setup() {
   //Backlight Pins
   pinMode(lcdBacklightPin, OUTPUT);
   digitalWrite(lcdBacklightPin, HIGH);
-  
   //attempt connection with retries and exit if failed
   connectWifi(false);
   tft.begin();
@@ -105,7 +104,6 @@ void setup() {
   tft.setTextColor(TFT_WHITE);
   if(!WiFi.isConnected())
   {
-    Serial.println("Not connected");
     tft.fillScreen(TFT_RED);
     tft.drawString("No Wifi connection", 10, 10,4);
     delay(50000);
@@ -113,8 +111,12 @@ void setup() {
   if(WiFi.isConnected()) // only makes sense to do this if we have a connection
   {
     tft.fillScreen(TFT_BLACK);
-    tft.drawString("Ready...", 10,10,4);
-
+    tft.drawString("Connected...", 10,10,4);
+    tft.fillScreen(TFT_BLACK);
+    tft.drawString("Getting time...", 10,10,4);
+    getTime(true);  // we need the time to get the date to calculate days until
+    tft.fillScreen(TFT_BLACK);
+    tft.drawString("Getting thought...", 10,10,4);
     getThought(true);
     while(thought.length()<1 || thought.length()>100)
     {
@@ -125,13 +127,14 @@ void setup() {
     #ifdef DEBUG
       Serial.println(thought);
     #endif
-    displayThought();  
-
+    //displayThought();  
+    tft.fillScreen(TFT_BLACK);
+    tft.drawString("Getting joke...", 10,10,4);
     getDadJoke(true);
     joke = breakStringIntoLines(joke,false);
     Serial.println(joke);
+    pageJustChanged = true;
   }
-  getTime(true);
 }
 
 void loop() {
@@ -273,7 +276,9 @@ void loop() {
         lastThoughtRefreshMillis = millis();
       }
       if(pageJustChanged)
+      {
         displayThought();
+      }
       pageJustChanged = false;
       break;
     case 1:  // dad joke
@@ -281,26 +286,33 @@ void loop() {
       {
           getDadJoke(false);
           joke = breakStringIntoLines(joke, false);
-          Serial.println(joke);
           lastDadJokeRefreshMillis = millis();
       }
       if(pageJustChanged)
+      {
         displayDadJoke();
+      }
       pageJustChanged = false;
       break;
     case 2:  // days til anniversary
         if(pageJustChanged)
+        {
           displayDaysToEvent(2, daysBetweenDateAndNow(2024,10,30), setYearOrdinal((year-yearMarried)));
+        }
         pageJustChanged = false;
         break;
     case 3: // halloween
       if(pageJustChanged)
+      {
         displayDaysToEvent(1, daysBetweenDateAndNow(2024,10,31), "");
+      }
       pageJustChanged = false;
       break;
     case 4: // christmas
       if(pageJustChanged)
+      {
         displayDaysToEvent(0, daysBetweenDateAndNow(2024,12,25), "");
+      }
       pageJustChanged = false;
       break;
   }
@@ -330,24 +342,84 @@ void loop() {
 // quietMode = true will try to connect but won't show any messages. 
 bool connectWifi(bool quietMode)
 {
- // Connect to Wi-Fi
+  #ifdef DEBUG
+    if(quietMode)
+    {
+      Serial.println("connecting wifi in quiet mode");
+    }
+    else
+    {
+      Serial.println("connecting wifi in non-quiet mode");
+    }
+  #endif
+  const int numRetries =5;
+  int retryCount = 0;
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(1); 
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_WHITE);
+  // Check if the secrets have been set
+  if (!quietMode && String(SSID) == "YOUR_SSID" || String(SSID_PASSWORD) == "YOUR_SSID_PASSWORD") {
+    tft.drawString("Missing secrets!", tft.width()/2, 70,4);
+    #ifdef DEBUG
+      Serial.println(F("Please update the secrets.h file with your credentials before running the sketch."));
+      Serial.println(F("You need to replace YOUR_SSID and YOUR_WIFI_PASSWORD with your WiFi credentials."));
+    #endif
+    delay(1000);
+    return false;  // Stop further execution of the code
+  }
+
+  // Connect to Wi-Fi
   WiFi.begin(SSID, SSID_PASSWORD);
-  while (!WiFi.isConnected()) 
+  while (!WiFi.isConnected() && (retryCount <= numRetries)) 
   {
     delay(1500);
     if(!quietMode)
     {
-      Serial.println("Connecting Wifi");
+      tft.fillScreen(TFT_BLACK);
+      tft.drawString("Connecting WiFi...", tft.width()/2, 70,4);
     }
+    retryCount++;
   }
   if(WiFi.isConnected())
   {
     if(!quietMode)
     {
-      Serial.println("Connected!");
-      Serial.println(WiFi.localIP());
+      tft.drawString("Connected!", tft.width()/2, 100,4);
+      delay(500);
     }
     return(true);
+  }
+  else if (String(BACKUP_SSID)!="")  // try the backup if there is one
+  {
+    retryCount = 0; // reset retry count for backup SSID
+    WiFi.disconnect();
+    delay(500);
+    WiFi.begin(BACKUP_SSID, BACKUP_SSID_PASSWORD);
+    while (!WiFi.isConnected() && (retryCount <= numRetries)) 
+    {
+      delay(1500);
+      if(!quietMode)
+      {
+        tft.fillScreen(TFT_BLACK);
+        tft.drawString("Backup WiFi...", tft.width()/2, 70,4);
+      }
+      retryCount++;
+    }
+    if(WiFi.isConnected())
+    {
+      if(!quietMode)
+      {
+        tft.drawString("Connected!", tft.width()/2, 100,4);
+        delay(500);
+      }
+      Serial.println("****Connected to backup wifi****");
+      return(true);
+    }
+    else
+    {
+      return(false);
+    }
   }
 }
 
@@ -477,8 +549,8 @@ void displayThought()
 
 String breakStringIntoLines(String item, bool countThoughtLines)
 {
-  const int lineSize = 24;
-  const int forwardWindow = 4; // how many chars to look ahead to find a space to replace with \n
+  const int lineSize = 23;
+  const int forwardWindow = 3; // how many chars to look ahead to find a space to replace with \n
   const int backWindow = 10; // how many chars to look back to find a space if forwardWindow doesn't have one
 
   String thoughtWithBreaks = "";
@@ -515,20 +587,23 @@ String breakStringIntoLines(String item, bool countThoughtLines)
           break;
         }
       }
-      if(!splitMade)
+      if(item.length()-pos > forwardWindow)
       {
-        for(int i=0; i<backWindow; i++)
+        if(!splitMade)
         {
-          //Serial.println("Searching backward");
-          if(isSpace(item.charAt(pos-i)))
+          for(int i=0; i<backWindow; i++)
           {
-            item.setCharAt(pos-i,'\n');
-            //Serial.println("sub made");
-            splitMade = true;
-            pos = (pos-i) + 1; // reset position to where we made the replacement. That's now the start of the next line.
-            if(countThoughtLines)
-              thoughtLines+=1;
-            break;
+            //Serial.println("Searching backward");
+            if(isSpace(item.charAt(pos-i)))
+            {
+              item.setCharAt(pos-i,'\n');
+              //Serial.println("sub made");
+              splitMade = true;
+              pos = (pos-i) + 1; // reset position to where we made the replacement. That's now the start of the next line.
+              if(countThoughtLines)
+                thoughtLines+=1;
+              break;
+            }
           }
         }
       }
