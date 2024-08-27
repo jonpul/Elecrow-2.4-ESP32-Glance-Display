@@ -2,6 +2,7 @@
 #include <WiFi.h>         
 #include <HTTPClient.h>
 #include <Arduino_JSON.h> // https://github.com/arduino-libraries/Arduino_JSON
+#include <TimeLib.h> // https://github.com/PaulStoffregen/Time
 #include "secrets.h"
 #include <JPEGDecoder.h>
 #include <time.h>
@@ -13,7 +14,6 @@
 #include "halloween.h"
 #include "xmastree.h"
 
-#define lcdBacklightPin 27
 #define minimum(a,b)     (((a) < (b)) ? (a) : (b))
 
 // custom fonts (generated from https://oleddisplay.squix.ch/)
@@ -46,9 +46,13 @@ int tapX, tapY;
 long startTouchMillis, endTouchMillis;
 enum touchGesture gestureResult = NOTOUCH;
 
-int year = 0;
-int month = 0;
-int day = 0;
+// sleep timer globals
+int prevHour = -1;   // used to test if hour has changed
+int displaySleepHour = 1;  // the backlight sleep only works if the OFF hour is less than the ON hour. 
+int displayWakeHour = 7;
+bool backlightOn = true;
+#define BACKLIGHT_PIN 27
+
 int yearMarried = 1987;
 
 // Pages
@@ -69,8 +73,10 @@ int lastPageDisplayMillis = millis();     // initialize page pause timer
 long lastThoughtRefreshMillis = millis(); // how long since we last refreshed the thought
 #define DADJOKE_REFRESH_MILLIS 1800000    // how long to get a new joke
 long lastDadJokeRefreshMillis = millis(); // how long since we last refreshed the joke
-#define DATE_REFRESH_MILLIS 14400000      // how long to refresh date (1440000000 = 4 hrs)
+#define DATE_REFRESH_MILLIS 3600000      // how long to refresh date (3600000 = 1 hr)
 long lastDateRefreshMillis = millis();    // how long since we last refreshed the date
+#define CHECK_SLEEP_OR_WAKE_MILLIS 600000 // how long between checking sleep/wake state (600000 = 10 mins)
+long lastCheckSleepWakeMillis = millis(); // how long since we last refreshed the date
 
 
 // have a few stored quotes in case we have rate limit or connection problems
@@ -93,8 +99,8 @@ void setup() {
   // prep the display
   Serial.begin(115200);
   //Backlight Pins
-  pinMode(lcdBacklightPin, OUTPUT);
-  digitalWrite(lcdBacklightPin, HIGH);
+  pinMode(BACKLIGHT_PIN, OUTPUT);
+  digitalWrite(BACKLIGHT_PIN, HIGH);
   //attempt connection with retries and exit if failed
   connectWifi(false);
   tft.begin();
@@ -120,7 +126,7 @@ void setup() {
     getThought(true);
     while(thought.length()<1 || thought.length()>100)
     {
-      Serial.println("Thought too long, getting another");
+      Serial.println(F("Thought too long, getting another"));
       getThought(true);
     }
     thought = breakStringIntoLines(thought,true);
@@ -166,7 +172,7 @@ void loop() {
         tapX = curX;
         tapY = curY;
         gestureResult = LONGTAP;
-        Serial.println("Long tap");
+        Serial.println(F("Long tap"));
       }
       // else if((curX > startX) &&
       //         (abs(curX-startX) > SWIPE_MIN_LENGTH) && 
@@ -214,6 +220,13 @@ void loop() {
 
   if(gestureResult == TAP)
   {
+    if(!backlightOn)
+    {
+      setDisplayAwake(true);
+      gestureResult = NOTOUCH;
+    }
+    else
+    {
       curPage++;
       lastPageDisplayMillis = millis(); // reset page display timer
       if(curPage > (numPages-1))
@@ -222,120 +235,140 @@ void loop() {
       }
       gestureResult = NOTOUCH;
       pageJustChanged = true;
-      tft.fillScreen(TFT_BLACK); 
+      tft.fillScreen(TFT_BLACK);
+    } 
   }
   if (gestureResult == LONGTAP) 
   {
+    if(!backlightOn)
+    {
+      setDisplayAwake(true);
+      gestureResult = NOTOUCH;
+    }
+    else
+    {
+      switch(curPage)
+      {
+        case 0: // thought/quote, get a new one
+          thought = "";
+          while(thought.length()<1 || thought.length()>100)
+          {
+            #ifdef DEBUG
+              Serial.println(F("Thought too long, getting another"));
+            #endif
+            getThought(false);
+          }
+          thought = breakStringIntoLines(thought,true);
+          lastThoughtRefreshMillis = millis();           
+          pageJustChanged = true;
+          lastPageDisplayMillis = millis(); // reset page display timer
+          break; 
+        case 1: // dad joke, get a new one
+          joke = "";
+          while(joke.length()<1 || joke.length()>115)
+          {
+            #ifdef DEBUG
+              Serial.println(F("Joke too long, getting another"));
+            #endif
+            getDadJoke(false);
+          }
+          joke = breakStringIntoLines(joke,false);
+          lastDadJokeRefreshMillis = millis();   
+          pageJustChanged = true;
+          lastPageDisplayMillis = millis(); // reset page display timer
+          break;
+        case 2: // anniversary
+          break;
+        case 3: // halloween
+          break;
+        case 4: // christmas
+          break;
+      }
+      gestureResult = NOTOUCH;
+    }
+  }
+  // display the page based on the type - only if backlight is on
+  if(backlightOn)
+  {
     switch(curPage)
     {
-      case 0: // thought/quote, get a new one
-        thought = "";
-        while(thought.length()<1 || thought.length()>100)
+      case 0:  // thought/quote
+        if(millis() > (THOUGHT_REFRESH_MILLIS + lastThoughtRefreshMillis))
         {
-          #ifdef DEBUG
-            Serial.println("Thought too long, getting another");
-          #endif
-          getThought(false);
+          getThought(false); 
+          thought = breakStringIntoLines(thought, true);
+          lastThoughtRefreshMillis = millis();
         }
-        thought = breakStringIntoLines(thought,true);
-        lastThoughtRefreshMillis = millis();           
-        pageJustChanged = true;
-        lastPageDisplayMillis = millis(); // reset page display timer
-        break; 
-      case 1: // dad joke, get a new one
-        joke = "";
-        while(joke.length()<1 || joke.length()>115)
-        {
-          #ifdef DEBUG
-            Serial.println("Joke too long, getting another");
-          #endif
-          getDadJoke(false);
-        }
-        joke = breakStringIntoLines(joke,false);
-        lastDadJokeRefreshMillis = millis();   
-        pageJustChanged = true;
-        lastPageDisplayMillis = millis(); // reset page display timer
-        break;
-      case 2: // anniversary
-        break;
-      case 3: // halloween
-        break;
-      case 4: // christmas
-        break;
-    }
-    gestureResult = NOTOUCH;
-  }
-    // display the page based on the type
-  switch(curPage)
-  {
-    case 0:  // thought/quote
-      if(millis() > (THOUGHT_REFRESH_MILLIS + lastThoughtRefreshMillis))
-      {
-        getThought(false); 
-        thought = breakStringIntoLines(thought, true);
-        lastThoughtRefreshMillis = millis();
-      }
-      if(pageJustChanged)
-      {
-        displayThought();
-      }
-      pageJustChanged = false;
-      break;
-    case 1:  // dad joke
-      if(millis() > (DADJOKE_REFRESH_MILLIS + lastDadJokeRefreshMillis))
-      {
-          getDadJoke(false);
-          joke = breakStringIntoLines(joke, false);
-          lastDadJokeRefreshMillis = millis();
-      }
-      if(pageJustChanged)
-      {
-        displayDadJoke();
-      }
-      pageJustChanged = false;
-      break;
-    case 2:  // days til anniversary
         if(pageJustChanged)
         {
-          displayDaysToEvent(2, daysBetweenDateAndNow(2024,10,30), setYearOrdinal((year-yearMarried)));
+          displayThought();
         }
         pageJustChanged = false;
         break;
-    case 3: // halloween
-      if(pageJustChanged)
-      {
-        displayDaysToEvent(1, daysBetweenDateAndNow(2024,10,31), "");
-      }
-      pageJustChanged = false;
-      break;
-    case 4: // christmas
-      if(pageJustChanged)
-      {
-        displayDaysToEvent(0, daysBetweenDateAndNow(2024,12,25), "");
-      }
-      pageJustChanged = false;
-      break;
-  }
-  // check the page timer and increment the page if its time (unless stopwatch is running)
-  if(millis() > (lastPageDisplayMillis + PAGE_DISPLAY_MILLIS))
-  {
-    curPage++;
-    lastPageDisplayMillis = millis(); // reset page display timer
-    if(curPage > (numPages-1))
-    {
-      curPage = 0;
+      case 1:  // dad joke
+        if(millis() > (DADJOKE_REFRESH_MILLIS + lastDadJokeRefreshMillis))
+        {
+            getDadJoke(false);
+            joke = breakStringIntoLines(joke, false);
+            lastDadJokeRefreshMillis = millis();
+        }
+        if(pageJustChanged)
+        {
+          displayDadJoke();
+        }
+        pageJustChanged = false;
+        break;
+      case 2:  // days til anniversary
+          if(pageJustChanged)
+          {
+            displayDaysToEvent(2, daysBetweenDateAndNow(2024,10,30), setYearOrdinal((year()-yearMarried)));
+          }
+          pageJustChanged = false;
+          break;
+      case 3: // halloween
+        if(pageJustChanged)
+        {
+          displayDaysToEvent(1, daysBetweenDateAndNow(2024,10,31), "");
+        }
+        pageJustChanged = false;
+        break;
+      case 4: // christmas
+        if(pageJustChanged)
+        {
+          displayDaysToEvent(0, daysBetweenDateAndNow(2024,12,25), "");
+        }
+        pageJustChanged = false;
+        break;
     }
-    //gestureResult = NOTOUCH;
-    pageJustChanged = true;
-    tft.fillScreen(TFT_BLACK);
+
+    // check the page timer and increment the page if its time (unless stopwatch is running)
+    if(millis() > (lastPageDisplayMillis + PAGE_DISPLAY_MILLIS))
+    {
+      curPage++;
+      lastPageDisplayMillis = millis(); // reset page display timer
+      if(curPage > (numPages-1))
+      {
+        curPage = 0;
+      }
+      //gestureResult = NOTOUCH;
+      pageJustChanged = true;
+      tft.fillScreen(TFT_BLACK);
+    }
   }  
   // update the date periodically
   if(millis() > (lastDateRefreshMillis + DATE_REFRESH_MILLIS))
   {
       getTime(false);
-      Serial.println("date refreshed by timer");
+      Serial.println(F("date refreshed by timer"));
       lastDateRefreshMillis = millis();
       // no need for pageJustChanged as we're not displaying the date anywhere
+  }
+
+  // check sleep/wake 
+  if(millis() > (lastCheckSleepWakeMillis + CHECK_SLEEP_OR_WAKE_MILLIS))
+  {
+    checkSleepOrWake();
+    lastCheckSleepWakeMillis = millis();
   }
 }
 
@@ -345,11 +378,11 @@ bool connectWifi(bool quietMode)
   #ifdef DEBUG
     if(quietMode)
     {
-      Serial.println("connecting wifi in quiet mode");
+      Serial.println(F("connecting wifi in quiet mode"));
     }
     else
     {
-      Serial.println("connecting wifi in non-quiet mode");
+      Serial.println(F("connecting wifi in non-quiet mode"));
     }
   #endif
   const int numRetries =5;
@@ -425,14 +458,23 @@ bool connectWifi(bool quietMode)
 
 void getThought(bool firstRun)
 {
+  // don't bother if screen is asleep
+  if(!backlightOn && !firstRun)
+  {
+    #ifdef DEBUG
+      Serial.println(F("Skipping thought update. Display is asleep."));
+    #endif
+    return;
+  }
+
   #ifdef DEBUG
     if(firstRun)
     {
-      Serial.println("STARTUP: getting thought");
+      Serial.println(F("STARTUP: getting thought"));
     }
     else
     {
-      Serial.println("NON-STARTUP: getting thought");
+      Serial.println(F("NON-STARTUP: getting thought"));
     }
   #endif
 
@@ -491,7 +533,7 @@ void getThought(bool firstRun)
     author = (String)jsonObj["result"]["author"];
 
     #ifdef DEBUG
-      Serial.println("Thought refreshed");
+      Serial.println(F("Thought refreshed"));
     #endif
 
   }
@@ -508,7 +550,7 @@ void displayThought()
   while(thought.length()<1 || thought.length()>100)
   {
     #ifdef DEBUG
-      Serial.println("Thought too long, getting another");
+      Serial.println(F("Thought too long, getting another"));
     #endif
     getThought(false);
   }
@@ -621,14 +663,23 @@ void selectCannedThought()
 
 void getDadJoke(bool firstRun)
 {
+  // don't bother if screen is asleep
+  if(!backlightOn && !firstRun)
+  {
+    #ifdef DEBUG
+      Serial.println(F("Skipping joke update. Display is asleep."));
+    #endif
+    return;
+  }
+
   #ifdef DEBUG
   if(firstRun)
   {
-    Serial.println("STARTUP: getting dad joke");
+    Serial.println(F("STARTUP: getting dad joke"));
   }
   else
   {
-    Serial.println("NON-STARTUP: getting dad joke");
+    Serial.println(F("NON-STARTUP: getting dad joke"));
   }
   #endif
 
@@ -691,7 +742,7 @@ void getDadJoke(bool firstRun)
     joke.replace("\r", "");
 
     #ifdef DEBUG
-      Serial.println("joke refreshed");
+      Serial.println(F("joke refreshed"));
     #endif
   }
   else if(!firstRun)
@@ -767,11 +818,11 @@ void getTime(bool firstRun)
   #ifdef DEBUG
     if(firstRun)
     {
-      Serial.println("STARTUP: getting time");
+      Serial.println(F("STARTUP: getting time"));
     }
     else
     {
-      Serial.println("NON-STARTUP: getting time");
+      Serial.println(F("NON-STARTUP: getting time"));
     }
   #endif
   if(WiFi.isConnected())
@@ -783,7 +834,7 @@ void getTime(bool firstRun)
     
     // Construct the URL using token from secrets.h  
     //this is WorldTimeAPI.org time request for current public IP
-    String url = "https://worldtimeapi.org/api/ip";
+    String url = F("https://worldtimeapi.org/api/ip");
     // Make the HTTP GET request 
     http.begin(url);
     int httpCode = http.GET();
@@ -820,9 +871,9 @@ void getTime(bool firstRun)
       Serial.println(localTime);
     #endif
     parseTime(localTime);
-    tft.fillScreen(TFT_BLACK);
+    
     #ifdef DEBUG
-      Serial.println("Time refreshed");
+      Serial.println(F("Time refreshed"));
     #endif
   }
   else if(!firstRun)
@@ -857,7 +908,7 @@ void parseTime(const char* localTime)
   cYr[lenYr]='\0';
   int tYr;
   sscanf(cYr,"%d", &tYr);
-  year = tYr;
+  //year = tYr;
 
   // extract the month
   char cMon[lenMon+1];
@@ -868,7 +919,7 @@ void parseTime(const char* localTime)
   cMon[lenMon]='\0';
   int tMon;
   sscanf(cMon,"%d", &tMon);
-  month = tMon;
+  //month = tMon;
   // extract the day
   char cDay[lenDay+1];
   for (int i=0; i<lenDay; i++)
@@ -878,7 +929,7 @@ void parseTime(const char* localTime)
   cDay[2]='\0';
   int tDay;
   sscanf(cDay,"%d", &tDay);
-  day = tDay;
+  //day = tDay;
 
   // extract the hour
   char cHr[lenHr+1];
@@ -909,6 +960,9 @@ void parseTime(const char* localTime)
   cSec[lenSec]='\0';
   int tSec;
   sscanf(cSec,"%d", &tSec); 
+
+  setTime(tHr,tMin,tSec,tDay,tMon,tYr);  
+  Serial.printf("Parsed and set time......  %d:%d:%d %d/%d/%d\n",hour(), minute(), second(), month(), day(), year());
 }
 
 String setYearOrdinal(int nbrYears)
@@ -930,9 +984,9 @@ int daysBetweenDateAndNow (int tYear, int tMonth, int tDay)
     struct tm tm2 = { 0 };
 
     /* date 1: today's date in year/month/day globals */
-    tm1.tm_year = year - 1900;
-    tm1.tm_mon = month - 1;
-    tm1.tm_mday = day;
+    tm1.tm_year = year() - 1900;
+    tm1.tm_mon = month() - 1;
+    tm1.tm_mday = day();
     tm1.tm_hour = tm1.tm_min = tm1.tm_sec = 0;
     tm1.tm_isdst = -1;
 
@@ -1047,4 +1101,56 @@ void renderJPEG(int xpos, int ypos) {
 
     tft.endWrite();
   }
+}
+
+void setDisplayAwake(bool setBacklightOn)
+{
+  backlightOn = setBacklightOn;
+  if(setBacklightOn)
+  {
+    digitalWrite(BACKLIGHT_PIN, HIGH);
+    #ifdef DEBUG
+      Serial.printf("Backlight on at %d:%d:%d\n",hour(),minute(),second());
+    #endif
+    // refresh things we ignored when the screen was off
+    getThought(false);
+    lastThoughtRefreshMillis = millis();
+    getDadJoke(false);
+    lastDadJokeRefreshMillis = millis();
+    pageJustChanged = true;
+  }
+  else
+  {
+    digitalWrite(BACKLIGHT_PIN, LOW);
+    #ifdef DEBUG
+      Serial.printf("Backlight off at %d:%d:%d\n",hour(),minute(),second());
+    #endif
+  }
+}
+void checkSleepOrWake()
+{
+ // when the hour changes check if we should sleep or wake up the display (which only happens on the hour
+  if(prevHour != hour())
+  {
+    prevHour = hour();
+    Serial.printf("prevhour=%d displaySleepHour=%d\n",prevHour, displaySleepHour);
+
+    if(hour() >= displaySleepHour && hour() < displayWakeHour)
+    {
+      // time for to sleep the display
+      if(backlightOn)
+      {
+        setDisplayAwake(false);
+      }
+    }
+    else if(hour() >= displayWakeHour)
+    {
+      // time to wake up the display
+      if(!backlightOn)
+      {
+        setDisplayAwake(true);
+      }
+    }
+  }
+  //reset checkSleepOrWakeTimer
 }
